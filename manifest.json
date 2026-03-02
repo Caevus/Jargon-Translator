@@ -19,6 +19,14 @@
       "css": ["tooltip.css"]
     }
   ],
+  "browser_action": {
+    "default_icon": {
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png"
+    },
+    "default_title": "Jargon Translator",
+    "default_popup": "popup.html"
+  },
   "options_ui": {
     "page": "options.html",
     "open_in_tab": false

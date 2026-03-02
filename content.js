@@ -2,6 +2,7 @@
   "use strict";
 
   const JARGON_CLASS = "jt-highlight";
+  const NOTABLE_CLASS = "jt-notable";
   const TOOLTIP_CLASS = "jt-tooltip";
   const LOADING_CLASS = "jt-loading";
 
@@ -25,8 +26,8 @@
     return before + selText + after;
   }
 
-  /** Build the prompt sent to the LLM. */
-  function buildPrompt(selectedText, context) {
+  /** Build the jargon prompt sent to the LLM. */
+  function buildJargonPrompt(selectedText, context) {
     return [
       "You are a plain-language translator for professional jargon and acronyms.",
       "",
@@ -37,11 +38,12 @@
       selectedText,
       "",
       "TASK:",
-      "1. Identify every piece of jargon, technical term, or acronym/initialism in the SELECTED TEXT.",
+      "1. Identify every piece of jargon, technical term, acronym/initialism, or domain-specific language in the SELECTED TEXT.",
+      "   Be thorough — when in doubt, INCLUDE the term. It is far better to flag a borderline term than to miss one.",
       "2. For each term, provide a SHORT explanation (one sentence max) a non-expert would understand.",
       "   For acronyms, start with the expanded form, then explain if needed.",
       "3. Use the surrounding context to pick the most likely meaning when a term is ambiguous.",
-      "4. Do NOT flag a term if the surrounding context already explains its meaning.",
+      "4. Only skip a term if it is common everyday language that any non-technical adult would already know.",
       "",
       "Return ONLY a JSON array. Each element must have exactly two keys:",
       '  "term"  – the exact string as it appears in the selected text (preserve original case),',
@@ -51,6 +53,35 @@
       "",
       "Example output:",
       '[{"term":"API","explanation":"Application Programming Interface — a way for programs to talk to each other."}]'
+    ].join("\n");
+  }
+
+  /** Build the notable-entities prompt sent to the LLM. */
+  function buildNotablePrompt(selectedText, context) {
+    return [
+      "You are an assistant that identifies notable people, organizations, and entities mentioned in text.",
+      "",
+      "CONTEXT (surrounding text on the page):",
+      context,
+      "",
+      "SELECTED TEXT to analyse:",
+      selectedText,
+      "",
+      "TASK:",
+      "1. Identify every named person, organization, company, agency, institution, or other named entity in the SELECTED TEXT that a reader might want context on.",
+      "   Be thorough — include anyone or anything notable or relevant to the subject matter.",
+      "2. For each entity, provide a SHORT explanation (one sentence max) of who or what they are and why they are relevant here.",
+      "3. Use the surrounding context to determine the most relevant description.",
+      "4. Do NOT include generic common nouns or everyday words that happen to be capitalized at the start of a sentence.",
+      "",
+      "Return ONLY a JSON array. Each element must have exactly two keys:",
+      '  "term"  – the exact name as it appears in the selected text (preserve original case),',
+      '  "explanation" – a brief explanation of who or what they are.',
+      "",
+      "If there are no notable entities, return an empty array: []",
+      "",
+      "Example output:",
+      '[{"term":"SpaceX","explanation":"Private aerospace company founded by Elon Musk, known for reusable rockets and the Starship program."}]'
     ].join("\n");
   }
 
@@ -67,7 +98,8 @@
 
   /** Remove highlights + tooltips only within a given range. */
   function clearHighlightsInRange(range) {
-    document.querySelectorAll("." + JARGON_CLASS).forEach((mark) => {
+    const selector = "." + JARGON_CLASS + ", ." + NOTABLE_CLASS;
+    document.querySelectorAll(selector).forEach((mark) => {
       if (!range.intersectsNode(mark)) return;
       const parent = mark.parentNode;
       if (!parent) return;
@@ -78,7 +110,7 @@
 
   /**
    * Highlight every occurrence of every term inside the selection range in
-   * a single pass.  For each text node we:
+   * a single pass.  Each term carries its own cssClass.  For each text node we:
    *   1. Find all index positions for every term (case-insensitive).
    *   2. Discard matches that sit inside a larger word (word-boundary check).
    *   3. Remove overlapping matches (keep the longer / earlier one).
@@ -103,7 +135,7 @@
       const text = node.textContent;
       const matches = [];
 
-      for (const { term, explanation } of terms) {
+      for (const { term, explanation, cssClass } of terms) {
         const termLower = term.toLowerCase();
         let pos = 0;
         while (pos < text.length) {
@@ -119,7 +151,7 @@
             continue;
           }
 
-          matches.push({ idx, length: term.length, explanation });
+          matches.push({ idx, length: term.length, explanation, cssClass });
           pos = idx + term.length;
         }
       }
@@ -149,7 +181,7 @@
         const afterStr = t.slice(m.idx + m.length);
 
         const mark = document.createElement("mark");
-        mark.className = JARGON_CLASS;
+        mark.className = m.cssClass;
         mark.textContent = matchStr;
         mark.dataset.explanation = m.explanation;
         mark.addEventListener("mouseenter", showTooltip);
@@ -246,21 +278,48 @@
     const selectedText = selection.toString();
     const context = getSurroundingContext(selection);
 
+    const { enableJargon, enableNotable } = await browser.storage.local.get({
+      enableJargon: true,
+      enableNotable: true
+    });
+
+    if (!enableJargon && !enableNotable) return;
+
     clearHighlightsInRange(range);
 
     const loader = showLoading(range);
     try {
-      const prompt = buildPrompt(selectedText, context);
-      const terms = await callLLM(prompt);
+      // Fire enabled LLM calls in parallel.
+      const promises = [];
+      if (enableJargon) {
+        promises.push(
+          callLLM(buildJargonPrompt(selectedText, context))
+            .then((terms) => ({ cssClass: JARGON_CLASS, terms }))
+        );
+      }
+      if (enableNotable) {
+        promises.push(
+          callLLM(buildNotablePrompt(selectedText, context))
+            .then((terms) => ({ cssClass: NOTABLE_CLASS, terms }))
+        );
+      }
 
+      const results = await Promise.all(promises);
       hideLoading(loader);
 
-      const validTerms = Array.isArray(terms)
-        ? terms.filter((t) => t && t.term && t.explanation)
-        : [];
+      // Merge all valid terms with their assigned CSS class.
+      const allTerms = [];
+      for (const { cssClass, terms } of results) {
+        if (!Array.isArray(terms)) continue;
+        for (const t of terms) {
+          if (t && t.term && t.explanation) {
+            allTerms.push({ term: t.term, explanation: t.explanation, cssClass });
+          }
+        }
+      }
 
-      if (validTerms.length === 0) {
-        showBrief("No jargon found.", range);
+      if (allTerms.length === 0) {
+        showBrief("No results found.", range);
         return;
       }
 
@@ -268,7 +327,7 @@
       const freshRange =
         selection.rangeCount > 0 ? selection.getRangeAt(0) : range;
 
-      highlightTerms(validTerms, freshRange);
+      highlightTerms(allTerms, freshRange);
     } catch (err) {
       hideLoading(loader);
       console.error("[Jargon Translator]", err);

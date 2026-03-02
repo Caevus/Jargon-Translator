@@ -12,6 +12,17 @@
   padding: 0 1px;
 }
 
+/* Highlighted notable people / organizations */
+.jt-notable {
+  background: rgba(100, 160, 255, 0.25);
+  border-bottom: 1.5px dashed rgba(40, 90, 200, 0.55);
+  border-radius: 2px;
+  cursor: help;
+  color: inherit;
+  font: inherit;
+  padding: 0 1px;
+}
+
 /* Tooltip shown on hover */
 .jt-tooltip {
   position: absolute;
