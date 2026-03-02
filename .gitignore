@@ -1,0 +1,24 @@
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (in case tooling is added later)
+node_modules/
+npm-debug.log*
+
+# Firefox extension packaging
+*.xpi
+*.zip
+web-ext-artifacts/
+
+# Secrets
+.env
+.env.*
