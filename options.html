@@ -59,14 +59,6 @@
   <input type="text" id="modelName" placeholder="google/gemini-2.0-flash-001">
   <p class="hint">Must support JSON output. Free-tier models work fine.</p>
 
-  <label for="selectivity">Selectivity</label>
-  <select id="selectivity">
-    <option value="low">Low — flag most technical terms and acronyms</option>
-    <option value="medium" selected>Medium — skip terms that are common knowledge or already explained nearby</option>
-    <option value="high">High — only flag highly specialized jargon</option>
-  </select>
-  <p class="hint">Controls how aggressively terms are flagged. Higher = fewer, more targeted results.</p>
-
   <button id="save">Save</button>
   <div class="status" id="status"></div>
 

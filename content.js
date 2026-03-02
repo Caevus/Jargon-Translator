@@ -25,17 +25,8 @@
     return before + selText + after;
   }
 
-  const SELECTIVITY_INSTRUCTIONS = {
-    low:
-      "Be thorough: flag most technical terms, acronyms, and industry-specific language, even if moderately common.",
-    medium:
-      "Be moderately selective: skip terms that are common knowledge to a general audience (e.g. \"TV\", \"GPS\") or that are already clearly explained in the surrounding context.",
-    high:
-      "Be very selective: only flag highly specialized jargon that a general reader is unlikely to understand. Skip anything that is common knowledge, widely used in everyday language, or already defined or explained in the surrounding context."
-  };
-
   /** Build the prompt sent to the LLM. */
-  function buildPrompt(selectedText, context, selectivity) {
+  function buildPrompt(selectedText, context) {
     return [
       "You are a plain-language translator for professional jargon and acronyms.",
       "",
@@ -45,10 +36,8 @@
       "SELECTED TEXT to analyse:",
       selectedText,
       "",
-      "SELECTIVITY: " + (SELECTIVITY_INSTRUCTIONS[selectivity] || SELECTIVITY_INSTRUCTIONS.medium),
-      "",
       "TASK:",
-      "1. Identify jargon, technical terms, or acronyms/initialisms in the SELECTED TEXT, following the selectivity level above.",
+      "1. Identify every piece of jargon, technical term, or acronym/initialism in the SELECTED TEXT.",
       "2. For each term, provide a SHORT explanation (one sentence max) a non-expert would understand.",
       "   For acronyms, start with the expanded form, then explain if needed.",
       "3. Use the surrounding context to pick the most likely meaning when a term is ambiguous.",
@@ -261,8 +250,7 @@
 
     const loader = showLoading(range);
     try {
-      const { selectivity } = await browser.storage.local.get({ selectivity: "medium" });
-      const prompt = buildPrompt(selectedText, context, selectivity);
+      const prompt = buildPrompt(selectedText, context);
       const terms = await callLLM(prompt);
 
       hideLoading(loader);
