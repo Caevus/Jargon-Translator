@@ -54,50 +54,12 @@
   }
 
   // ── LLM call ─────────────────────────────────────────────────────────
+  // Delegates to the background script to avoid the host page's CSP.
 
   async function callLLM(prompt) {
-    const { apiKey, apiEndpoint, modelName } = await browser.storage.local.get({
-      apiKey: "",
-      apiEndpoint: "https://openrouter.ai/api/v1/chat/completions",
-      modelName: "google/gemini-2.0-flash-001"
-    });
-
-    if (!apiKey) {
-      throw new Error(
-        "No API key configured. Right-click the Jargon Translator icon → Preferences to set one."
-      );
-    }
-
-    const res = await fetch(apiEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: modelName,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2
-      })
-    });
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`LLM request failed (${res.status}): ${body}`);
-    }
-
-    const data = await res.json();
-    const raw =
-      data.choices &&
-      data.choices[0] &&
-      data.choices[0].message &&
-      data.choices[0].message.content;
-
-    if (!raw) throw new Error("Empty response from LLM.");
-
-    // Strip markdown code fences if present.
-    const cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
-    return JSON.parse(cleaned);
+    const response = await browser.runtime.sendMessage({ action: "callLLM", prompt });
+    if (response.error) throw new Error(response.error);
+    return response.terms;
   }
 
   // ── DOM manipulation ─────────────────────────────────────────────────
