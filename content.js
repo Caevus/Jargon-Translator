@@ -25,8 +25,17 @@
     return before + selText + after;
   }
 
+  const SELECTIVITY_INSTRUCTIONS = {
+    low:
+      "Be thorough: flag most technical terms, acronyms, and industry-specific language, even if moderately common.",
+    medium:
+      "Be moderately selective: skip terms that are common knowledge to a general audience (e.g. \"TV\", \"GPS\") or that are already clearly explained in the surrounding context.",
+    high:
+      "Be very selective: only flag highly specialized jargon that a general reader is unlikely to understand. Skip anything that is common knowledge, widely used in everyday language, or already defined or explained in the surrounding context."
+  };
+
   /** Build the prompt sent to the LLM. */
-  function buildPrompt(selectedText, context) {
+  function buildPrompt(selectedText, context, selectivity) {
     return [
       "You are a plain-language translator for professional jargon and acronyms.",
       "",
@@ -36,11 +45,14 @@
       "SELECTED TEXT to analyse:",
       selectedText,
       "",
+      "SELECTIVITY: " + (SELECTIVITY_INSTRUCTIONS[selectivity] || SELECTIVITY_INSTRUCTIONS.medium),
+      "",
       "TASK:",
-      "1. Identify every piece of jargon, technical term, or acronym/initialism in the SELECTED TEXT.",
+      "1. Identify jargon, technical terms, or acronyms/initialisms in the SELECTED TEXT, following the selectivity level above.",
       "2. For each term, provide a SHORT explanation (one sentence max) a non-expert would understand.",
       "   For acronyms, start with the expanded form, then explain if needed.",
       "3. Use the surrounding context to pick the most likely meaning when a term is ambiguous.",
+      "4. Do NOT flag a term if the surrounding context already explains its meaning.",
       "",
       "Return ONLY a JSON array. Each element must have exactly two keys:",
       '  "term"  – the exact string as it appears in the selected text (preserve original case),',
@@ -221,6 +233,18 @@
     if (el) el.remove();
   }
 
+  /** Show a brief, auto-dismissing message near the selection. */
+  function showBrief(text, range) {
+    const el = document.createElement("span");
+    el.className = LOADING_CLASS + " jt-brief";
+    el.textContent = text;
+    document.body.appendChild(el);
+    const rect = range.getBoundingClientRect();
+    el.style.top = rect.top + window.scrollY - el.offsetHeight - 6 + "px";
+    el.style.left = rect.left + window.scrollX + "px";
+    setTimeout(() => el.remove(), 3000);
+  }
+
   // ── Message listener ─────────────────────────────────────────────────
 
   browser.runtime.onMessage.addListener(async (msg) => {
@@ -237,15 +261,20 @@
 
     const loader = showLoading(range);
     try {
-      const prompt = buildPrompt(selectedText, context);
+      const { selectivity } = await browser.storage.local.get({ selectivity: "medium" });
+      const prompt = buildPrompt(selectedText, context, selectivity);
       const terms = await callLLM(prompt);
 
       hideLoading(loader);
 
-      if (!Array.isArray(terms) || terms.length === 0) return;
+      const validTerms = Array.isArray(terms)
+        ? terms.filter((t) => t && t.term && t.explanation)
+        : [];
 
-      const validTerms = terms.filter((t) => t && t.term && t.explanation);
-      if (validTerms.length === 0) return;
+      if (validTerms.length === 0) {
+        showBrief("No jargon found.", range);
+        return;
+      }
 
       // Re-grab the range — the selection may still be intact.
       const freshRange =
