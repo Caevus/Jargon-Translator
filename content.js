@@ -64,32 +64,33 @@
 
   // ── DOM manipulation ─────────────────────────────────────────────────
 
-  /** Remove all previous highlights + tooltips injected by this extension. */
-  function clearPreviousHighlights() {
-    document.querySelectorAll("." + TOOLTIP_CLASS).forEach((el) => el.remove());
-    document.querySelectorAll("." + JARGON_CLASS).forEach((el) => {
-      const parent = el.parentNode;
+  /** Remove highlights + tooltips only within a given range. */
+  function clearHighlightsInRange(range) {
+    document.querySelectorAll("." + JARGON_CLASS).forEach((mark) => {
+      if (!range.intersectsNode(mark)) return;
+      const parent = mark.parentNode;
       if (!parent) return;
-      parent.replaceChild(document.createTextNode(el.textContent), el);
+      parent.replaceChild(document.createTextNode(mark.textContent), mark);
       parent.normalize();
     });
   }
 
   /**
-   * Walk the text nodes inside the user's selection range and wrap each
-   * occurrence of `term` in a <mark> with a hover tooltip.
-   *
-   * Handles terms that may span multiple text nodes by working with the
-   * range's common ancestor and processing only nodes within the range.
+   * Highlight every occurrence of every term inside the selection range in
+   * a single pass.  For each text node we:
+   *   1. Find all index positions for every term (case-insensitive).
+   *   2. Discard matches that sit inside a larger word (word-boundary check).
+   *   3. Remove overlapping matches (keep the longer / earlier one).
+   *   4. Wrap matches right-to-left so earlier indices stay valid.
    */
-  function highlightTerm(term, explanation, range) {
-    const treeWalker = document.createTreeWalker(
+  function highlightTerms(terms, range) {
+    const root =
       range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
         ? range.commonAncestorContainer
-        : range.commonAncestorContainer.parentElement,
-      NodeFilter.SHOW_TEXT
-    );
+        : range.commonAncestorContainer.parentElement;
+    const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 
+    // Snapshot text nodes first — the list must not change while we mutate.
     const textNodes = [];
     while (treeWalker.nextNode()) {
       if (range.intersectsNode(treeWalker.currentNode)) {
@@ -97,34 +98,71 @@
       }
     }
 
-    const termLower = term.toLowerCase();
-
     for (const node of textNodes) {
       const text = node.textContent;
-      const idx = text.toLowerCase().indexOf(termLower);
-      if (idx === -1) continue;
+      const matches = [];
 
-      // Split the text node into before | match | after.
-      const before = text.slice(0, idx);
-      const match = text.slice(idx, idx + term.length);
-      const after = text.slice(idx + term.length);
+      for (const { term, explanation } of terms) {
+        const termLower = term.toLowerCase();
+        let pos = 0;
+        while (pos < text.length) {
+          const idx = text.toLowerCase().indexOf(termLower, pos);
+          if (idx === -1) break;
 
-      const mark = document.createElement("mark");
-      mark.className = JARGON_CLASS;
-      mark.textContent = match;
-      mark.dataset.explanation = explanation;
+          // Word-boundary check: reject matches embedded inside a word.
+          const before = idx > 0 ? text[idx - 1] : "";
+          const after =
+            idx + term.length < text.length ? text[idx + term.length] : "";
+          if (/\w/.test(before) || /\w/.test(after)) {
+            pos = idx + 1;
+            continue;
+          }
 
-      // Tooltip show / hide via mouse events.
-      mark.addEventListener("mouseenter", showTooltip);
-      mark.addEventListener("mouseleave", hideTooltip);
+          matches.push({ idx, length: term.length, explanation });
+          pos = idx + term.length;
+        }
+      }
 
-      const parent = node.parentNode;
-      if (after) parent.insertBefore(document.createTextNode(after), node.nextSibling);
-      parent.insertBefore(mark, node.nextSibling);
-      if (before) {
-        node.textContent = before;
-      } else {
-        parent.removeChild(node);
+      if (matches.length === 0) continue;
+
+      // Sort descending by position so right-to-left wrapping preserves indices.
+      matches.sort((a, b) => b.idx - a.idx || b.length - a.length);
+
+      // Drop overlapping matches (keep the rightmost / longest first, then
+      // only accept earlier matches that don't overlap).
+      const kept = [matches[0]];
+      for (let i = 1; i < matches.length; i++) {
+        const prev = kept[kept.length - 1];
+        if (matches[i].idx + matches[i].length <= prev.idx) {
+          kept.push(matches[i]);
+        }
+      }
+
+      // Wrap right-to-left.  After each split the left portion of the text
+      // node keeps its original indices, so earlier matches remain valid.
+      let cur = node;
+      for (const m of kept) {
+        const t = cur.textContent;
+        const beforeStr = t.slice(0, m.idx);
+        const matchStr = t.slice(m.idx, m.idx + m.length);
+        const afterStr = t.slice(m.idx + m.length);
+
+        const mark = document.createElement("mark");
+        mark.className = JARGON_CLASS;
+        mark.textContent = matchStr;
+        mark.dataset.explanation = m.explanation;
+        mark.addEventListener("mouseenter", showTooltip);
+        mark.addEventListener("mouseleave", hideTooltip);
+
+        const parent = cur.parentNode;
+        if (afterStr)
+          parent.insertBefore(document.createTextNode(afterStr), cur.nextSibling);
+        parent.insertBefore(mark, cur.nextSibling);
+        if (beforeStr) {
+          cur.textContent = beforeStr;
+        } else {
+          parent.removeChild(cur);
+        }
       }
     }
   }
@@ -195,7 +233,7 @@
     const selectedText = selection.toString();
     const context = getSurroundingContext(selection);
 
-    clearPreviousHighlights();
+    clearHighlightsInRange(range);
 
     const loader = showLoading(range);
     try {
@@ -206,15 +244,14 @@
 
       if (!Array.isArray(terms) || terms.length === 0) return;
 
+      const validTerms = terms.filter((t) => t && t.term && t.explanation);
+      if (validTerms.length === 0) return;
+
       // Re-grab the range — the selection may still be intact.
       const freshRange =
         selection.rangeCount > 0 ? selection.getRangeAt(0) : range;
 
-      for (const { term, explanation } of terms) {
-        if (term && explanation) {
-          highlightTerm(term, explanation, freshRange);
-        }
-      }
+      highlightTerms(validTerms, freshRange);
     } catch (err) {
       hideLoading(loader);
       console.error("[Jargon Translator]", err);
