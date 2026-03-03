@@ -92,7 +92,18 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         );
 
         if (!res.ok) {
-          sendResponse({ error: `GitHub returned ${res.status}.` });
+          if (res.status === 404) {
+            sendResponse({
+              error:
+                "Repository not found on GitHub. Make sure the repo is public and the homepage_url in manifest.json is correct."
+            });
+          } else if (res.status === 403) {
+            sendResponse({
+              error: "GitHub API rate limit exceeded. Try again in a few minutes."
+            });
+          } else {
+            sendResponse({ error: `GitHub returned ${res.status}.` });
+          }
           return;
         }
 
