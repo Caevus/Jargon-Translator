@@ -1,19 +1,93 @@
 (function () {
   "use strict";
 
-  const JARGON_CLASS = "jt-highlight";
+  // ── Configuration ─────────────────────────────────────────────────────────
+  // All tuneable constants in one place.
+
+  const CONFIG = {
+    CONTEXT_CHARS: 800,       // characters of surrounding text sent for context
+    CONTEXT_FALLBACK_CHARS: 1600, // fallback when selection can't be found in container
+    DEBOUNCE_MS: 500,         // delay before firing LLM after a new selection
+    BRIEF_DISPLAY_MS: 3000,   // how long "No results found." stays visible
+    ERROR_DISPLAY_MS: 5000,   // how long error tooltips stay visible
+    TOOLTIP_GAP_PX: 6,        // gap between tooltip and highlighted term
+    TOOLTIP_MARGIN_PX: 4,     // minimum distance from viewport edge
+    LOADING_GAP_PX: 6         // gap between loading indicator and selection
+  };
+
+  const JARGON_CLASS  = "jt-highlight";
   const NOTABLE_CLASS = "jt-notable";
   const TOOLTIP_CLASS = "jt-tooltip";
   const LOADING_CLASS = "jt-loading";
 
-  // ── Color customisation ────────────────────────────────────────────
+  // ── Common-terms blocklist ────────────────────────────────────────────────
+  // Terms that the LLM is told to skip but sometimes flags anyway.  Post-filter
+  // results against this set, and skip the API call entirely when EVERY token
+  // in the selection is listed here.
+
+  const COMMON_TERMS_BLOCKLIST = new Set([
+    // Consumer electronics & connectivity
+    "tv", "dvd", "hdtv", "lcd", "led", "oled", "4k", "usb", "hdmi", "wifi",
+    "wi-fi", "bluetooth", "gps", "nfc", "rf", "ir", "vr", "ar",
+    // Files & formats
+    "pdf", "jpeg", "jpg", "png", "gif", "mp3", "mp4", "csv", "zip", "doc",
+    "docx", "xls", "xlsx", "ppt", "html", "css", "xml", "json",
+    // Communication & internet
+    "email", "e-mail", "sms", "mms", "dm", "url", "www", "http", "https",
+    "ftp", "app", "chat", "forum", "blog", "vlog", "rss", "spam",
+    // Universal abbreviations
+    "atm", "asap", "fyi", "aka", "diy", "faq", "eta", "rsvp", "tba", "tbd",
+    "tbc", "ps", "re", "cc", "bcc", "id", "pin", "otc", "ngo",
+    // Business basics
+    "ceo", "cfo", "cto", "coo", "hr", "pr", "qa", "cv", "kpi", "roi",
+    "b2b", "b2c", "ipo",
+    // Units of measure
+    "km", "mi", "mph", "kph", "kg", "lb", "lbs", "mg", "ml", "gb", "mb",
+    "kb", "tb", "ghz", "mhz", "hz", "kwh", "psi", "rpm",
+    // Time & geography
+    "am", "pm", "est", "cst", "mst", "pst", "gmt", "utc", "bst",
+    "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    "mon", "tue", "wed", "thu", "fri", "sat", "sun",
+    // Common tech/computing words that aren't jargon in context
+    "pc", "mac", "os", "io", "api", "sdk", "ide", "ui", "ux",
+    // Medical/everyday
+    "iq", "bmi", "dna", "rna", "er", "icu", "gp",
+    // Misc
+    "ok", "okay", "etc", "vs", "no", "yes"
+  ]);
+
+  /**
+   * Returns true when every alphanumeric token in the selection is a common
+   * term — i.e. there is nothing for the LLM to explain.
+   */
+  function isFullyBlocklisted(text) {
+    const tokens = text.toLowerCase().match(/[a-z0-9'-]+/g);
+    if (!tokens || tokens.length === 0) return false;
+    return tokens.every((t) => COMMON_TERMS_BLOCKLIST.has(t));
+  }
+
+  // ── In-memory cache ───────────────────────────────────────────────────────
+  // Avoids duplicate API calls for the same text within a session.
+
+  const termCache = new Map();
+
+  /** Fast, non-cryptographic hash for cache keys. */
+  function hashText(str) {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) + h + str.charCodeAt(i)) & 0xffffffff;
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  // ── Color customisation ───────────────────────────────────────────────────
 
   const COLOR_PRESETS = {
-    yellow: { bg: "rgba(255, 210, 50, 0.30)", border: "rgba(180, 140, 0, 0.55)" },
-    blue:   { bg: "rgba(100, 160, 255, 0.25)", border: "rgba(40, 90, 200, 0.55)" },
-    green:  { bg: "rgba(100, 200, 120, 0.25)", border: "rgba(30, 130, 50, 0.55)" },
-    pink:   { bg: "rgba(255, 140, 170, 0.25)", border: "rgba(200, 60, 100, 0.55)" },
-    purple: { bg: "rgba(180, 130, 255, 0.25)", border: "rgba(100, 50, 200, 0.55)" }
+    yellow: { bg: "rgba(255, 210, 50, 0.30)",  border: "rgba(180, 140, 0, 0.55)"   },
+    blue:   { bg: "rgba(100, 160, 255, 0.25)", border: "rgba(40, 90, 200, 0.55)"   },
+    green:  { bg: "rgba(100, 200, 120, 0.25)", border: "rgba(30, 130, 50, 0.55)"   },
+    pink:   { bg: "rgba(255, 140, 170, 0.25)", border: "rgba(200, 60, 100, 0.55)"  },
+    purple: { bg: "rgba(180, 130, 255, 0.25)", border: "rgba(100, 50, 200, 0.55)"  }
   };
 
   function hexToColors(hex) {
@@ -23,7 +97,7 @@
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
     return {
-      bg: `rgba(${r}, ${g}, ${b}, 0.25)`,
+      bg:     `rgba(${r}, ${g}, ${b}, 0.25)`,
       border: `rgba(${Math.round(r * 0.6)}, ${Math.round(g * 0.6)}, ${Math.round(b * 0.6)}, 0.55)`
     };
   }
@@ -35,7 +109,6 @@
     return COLOR_PRESETS[name] || COLOR_PRESETS.yellow;
   }
 
-  /** Inject (or update) a <style> element that overrides highlight colours. */
   function applyHighlightColors() {
     browser.storage.local
       .get({
@@ -71,9 +144,9 @@
     }
   });
 
-  // ── Helpers ──────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /** Grab surrounding text for extra context (up to ~800 chars each side). */
+  /** Grab surrounding text for extra context. */
   function getSurroundingContext(selection) {
     if (!selection.rangeCount) return "";
     const range = selection.getRangeAt(0);
@@ -85,13 +158,14 @@
     const full = container.textContent || "";
     const selText = selection.toString();
     const idx = full.indexOf(selText);
-    if (idx === -1) return full.slice(0, 1600);
-    const before = full.slice(Math.max(0, idx - 800), idx);
-    const after = full.slice(idx + selText.length, idx + selText.length + 800);
+    if (idx === -1) return full.slice(0, CONFIG.CONTEXT_FALLBACK_CHARS);
+    const before = full.slice(Math.max(0, idx - CONFIG.CONTEXT_CHARS), idx);
+    const after  = full.slice(idx + selText.length, idx + selText.length + CONFIG.CONTEXT_CHARS);
     return before + selText + after;
   }
 
-  /** Build the jargon prompt sent to the LLM. */
+  // ── LLM prompts ───────────────────────────────────────────────────────────
+
   function buildJargonPrompt(selectedText, context) {
     return [
       "You are a plain-language translator for professional jargon and acronyms.",
@@ -122,7 +196,6 @@
     ].join("\n");
   }
 
-  /** Build the notable-entities prompt sent to the LLM. */
   function buildNotablePrompt(selectedText, context) {
     return [
       "You are an assistant that identifies notable people, organizations, and entities mentioned in text.",
@@ -152,18 +225,65 @@
     ].join("\n");
   }
 
-  // ── LLM call ─────────────────────────────────────────────────────────
-  // Delegates to the background script to avoid the host page's CSP.
-
-  async function callLLM(prompt) {
-    const response = await browser.runtime.sendMessage({ action: "callLLM", prompt });
-    if (response.error) throw new Error(response.error);
-    return response.terms;
+  /**
+   * Combined prompt used when both jargon and notable modes are enabled.
+   * A single call is cheaper and faster than two parallel calls.
+   */
+  function buildCombinedPrompt(selectedText, context) {
+    return [
+      "You are a plain-language assistant. Analyse the SELECTED TEXT below and do two things:",
+      "",
+      "CONTEXT (surrounding text on the page):",
+      context,
+      "",
+      "SELECTED TEXT to analyse:",
+      selectedText,
+      "",
+      "TASK A — Jargon:",
+      "  Identify jargon, technical terms, acronyms/initialisms, and domain-specific language.",
+      "  Lean towards inclusion. Skip common everyday terms (TV, email, GPS) and hashtags.",
+      "  For each term give a SHORT plain-language explanation (one sentence max).",
+      "  For acronyms, start with the expanded form.",
+      "",
+      "TASK B — Notable entities:",
+      "  Identify named people, organizations, companies, and institutions with broader public notability",
+      "  (Wikipedia article or well-known reputation). Skip generic nouns, everyday capitalised words,",
+      "  hashtags, and private individuals. Only include a first name if the context makes the person",
+      "  unambiguous. Give a SHORT explanation of who/what they are.",
+      "",
+      'Return ONLY a JSON object with two keys, "jargon" and "notable", each an array of',
+      '{ "term": "<exact text>", "explanation": "<one sentence>" } objects.',
+      "Use empty arrays when nothing qualifies.",
+      "",
+      "Example:",
+      '{"jargon":[{"term":"API","explanation":"Application Programming Interface — a way for programs to communicate."}],"notable":[{"term":"SpaceX","explanation":"Private aerospace company founded by Elon Musk."}]}'
+    ].join("\n");
   }
 
-  // ── DOM manipulation ─────────────────────────────────────────────────
+  // ── LLM call ──────────────────────────────────────────────────────────────
 
-  /** Remove highlights + tooltips only within a given range. */
+  /** Structured error thrown when the background script reports a problem. */
+  class LLMError extends Error {
+    constructor(type, message, optionsUrl) {
+      super(message);
+      this.name = "LLMError";
+      this.type = type;
+      this.optionsUrl = optionsUrl || null;
+    }
+  }
+
+  /** Send a prompt to the background LLM proxy and return the parsed result. */
+  async function callLLM(prompt) {
+    const response = await browser.runtime.sendMessage({ action: "callLLM", prompt });
+    if (response.error) {
+      const { type, message, optionsUrl } = response.error;
+      throw new LLMError(type, message, optionsUrl);
+    }
+    return response.result;
+  }
+
+  // ── DOM manipulation ──────────────────────────────────────────────────────
+
   function clearHighlightsInRange(range) {
     const selector = "." + JARGON_CLASS + ", ." + NOTABLE_CLASS;
     document.querySelectorAll(selector).forEach((mark) => {
@@ -176,12 +296,19 @@
   }
 
   /**
-   * Highlight every occurrence of every term inside the selection range in
-   * a single pass.  Each term carries its own cssClass.  For each text node we:
-   *   1. Find all index positions for every term (case-insensitive).
-   *   2. Discard matches that sit inside a larger word (word-boundary check).
-   *   3. Remove overlapping matches (keep the longer / earlier one).
-   *   4. Wrap matches right-to-left so earlier indices stay valid.
+   * Highlight every occurrence of every term inside the selection range.
+   * Each term carries its own cssClass.  For each text node we:
+   *
+   *   1. COLLECT matches — find every case-insensitive position for each term.
+   *   2. FILTER by word boundary — reject hits that are embedded inside a larger
+   *      word.  Apostrophes are allowed adjacent to a match so that possessives
+   *      like "API's" still resolve to the "API" term.
+   *   3. DEDUPLICATE overlaps — sort descending by position (rightmost first),
+   *      then walk the list keeping only matches that don't overlap the previous
+   *      kept match.  This retains the rightmost/longest non-overlapping set.
+   *   4. WRAP right-to-left — processing from the end of the text node backwards
+   *      means earlier character indices are not shifted by DOM insertions, so
+   *      each subsequent match is still valid without index correction.
    */
   function highlightTerms(terms, range) {
     const root =
@@ -190,7 +317,8 @@
         : range.commonAncestorContainer.parentElement;
     const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 
-    // Snapshot text nodes first — the list must not change while we mutate.
+    // Snapshot text nodes before any DOM mutation: iterating a live NodeList
+    // while inserting/removing nodes can skip or revisit entries.
     const textNodes = [];
     while (treeWalker.nextNode()) {
       if (range.intersectsNode(treeWalker.currentNode)) {
@@ -209,11 +337,12 @@
           const idx = text.toLowerCase().indexOf(termLower, pos);
           if (idx === -1) break;
 
-          // Word-boundary check: reject matches embedded inside a word.
+          // Word-boundary check: reject the match if immediately adjacent to
+          // an alphanumeric character (but NOT an apostrophe, so "API's" still
+          // matches "API" and possessive/contraction forms are handled cleanly).
           const before = idx > 0 ? text[idx - 1] : "";
-          const after =
-            idx + term.length < text.length ? text[idx + term.length] : "";
-          if (/\w/.test(before) || /\w/.test(after)) {
+          const after  = idx + term.length < text.length ? text[idx + term.length] : "";
+          if (/[^\W']/.test(before) || /[^\W']/.test(after)) {
             pos = idx + 1;
             continue;
           }
@@ -225,11 +354,14 @@
 
       if (matches.length === 0) continue;
 
-      // Sort descending by position so right-to-left wrapping preserves indices.
+      // Sort descending by start position (rightmost first); break ties by
+      // preferring longer matches so a more specific term wins.
       matches.sort((a, b) => b.idx - a.idx || b.length - a.length);
 
-      // Drop overlapping matches (keep the rightmost / longest first, then
-      // only accept earlier matches that don't overlap).
+      // Overlap removal: the first entry (rightmost) is always kept.  For each
+      // subsequent candidate, only keep it when its end index does not reach
+      // into the previous kept match (i.e. candidate.idx + candidate.length
+      // must be <= the start of the already-kept match to its right).
       const kept = [matches[0]];
       for (let i = 1; i < matches.length; i++) {
         const prev = kept[kept.length - 1];
@@ -238,14 +370,16 @@
         }
       }
 
-      // Wrap right-to-left.  After each split the left portion of the text
-      // node keeps its original indices, so earlier matches remain valid.
+      // Wrap right-to-left.  `cur` always points to the text node whose left
+      // portion still holds the unprocessed prefix.  Each iteration splits off
+      // a <mark> and an optional right-side text node, leaving `cur` as the
+      // shrinking left remnant — so its indices are unchanged for the next pass.
       let cur = node;
       for (const m of kept) {
         const t = cur.textContent;
         const beforeStr = t.slice(0, m.idx);
-        const matchStr = t.slice(m.idx, m.idx + m.length);
-        const afterStr = t.slice(m.idx + m.length);
+        const matchStr  = t.slice(m.idx, m.idx + m.length);
+        const afterStr  = t.slice(m.idx + m.length);
 
         const mark = document.createElement("mark");
         mark.className = m.cssClass;
@@ -267,7 +401,7 @@
     }
   }
 
-  // ── Tooltip ──────────────────────────────────────────────────────────
+  // ── Tooltip ───────────────────────────────────────────────────────────────
 
   let activeTooltip = null;
 
@@ -279,20 +413,18 @@
     tip.textContent = mark.dataset.explanation;
     document.body.appendChild(tip);
 
-    // Position just above the highlighted term.
-    const rect = mark.getBoundingClientRect();
+    const rect    = mark.getBoundingClientRect();
     const tipRect = tip.getBoundingClientRect();
-    let top = rect.top + window.scrollY - tipRect.height - 6;
+    let top  = rect.top  + window.scrollY - tipRect.height - CONFIG.TOOLTIP_GAP_PX;
     let left = rect.left + window.scrollX + rect.width / 2 - tipRect.width / 2;
 
-    // Keep inside viewport horizontally.
-    left = Math.max(4, Math.min(left, window.innerWidth - tipRect.width - 4));
-    // Flip below if no room above.
-    if (top < window.scrollY) {
-      top = rect.bottom + window.scrollY + 6;
-    }
+    left = Math.max(
+      CONFIG.TOOLTIP_MARGIN_PX,
+      Math.min(left, window.innerWidth - tipRect.width - CONFIG.TOOLTIP_MARGIN_PX)
+    );
+    if (top < window.scrollY) top = rect.bottom + window.scrollY + CONFIG.TOOLTIP_GAP_PX;
 
-    tip.style.top = top + "px";
+    tip.style.top  = top  + "px";
     tip.style.left = left + "px";
     activeTooltip = tip;
   }
@@ -304,7 +436,7 @@
     }
   }
 
-  // ── Loading indicator ────────────────────────────────────────────────
+  // ── Loading / status indicators ───────────────────────────────────────────
 
   function showLoading(range) {
     const rect = range.getBoundingClientRect();
@@ -312,7 +444,7 @@
     el.className = LOADING_CLASS;
     el.textContent = "Translating\u2026";
     document.body.appendChild(el);
-    el.style.top = rect.top + window.scrollY - el.offsetHeight - 6 + "px";
+    el.style.top  = rect.top  + window.scrollY - el.offsetHeight - CONFIG.LOADING_GAP_PX + "px";
     el.style.left = rect.left + window.scrollX + "px";
     return el;
   }
@@ -321,93 +453,158 @@
     if (el) el.remove();
   }
 
-  /** Show a brief, auto-dismissing message near the selection. */
   function showBrief(text, range) {
     const el = document.createElement("span");
     el.className = LOADING_CLASS + " jt-brief";
     el.textContent = text;
     document.body.appendChild(el);
     const rect = range.getBoundingClientRect();
-    el.style.top = rect.top + window.scrollY - el.offsetHeight - 6 + "px";
+    el.style.top  = rect.top  + window.scrollY - el.offsetHeight - CONFIG.LOADING_GAP_PX + "px";
     el.style.left = rect.left + window.scrollX + "px";
-    setTimeout(() => el.remove(), 3000);
+    setTimeout(() => el.remove(), CONFIG.BRIEF_DISPLAY_MS);
   }
 
-  // ── Message listener ─────────────────────────────────────────────────
+  /**
+   * Display an error near the selection.  For actionable errors (missing key,
+   * bad key, bad JSON) we show a link to the Settings page.
+   */
+  function showError(err, range) {
+    const errTip = document.createElement("span");
+    errTip.className = TOOLTIP_CLASS + " jt-error";
 
-  browser.runtime.onMessage.addListener(async (msg) => {
+    if (err instanceof LLMError && err.optionsUrl) {
+      errTip.appendChild(document.createTextNode(err.message + " "));
+      const a = document.createElement("a");
+      a.href = err.optionsUrl;
+      a.target = "_blank";
+      a.textContent = "Open Settings";
+      a.style.cssText = "color:inherit;text-decoration:underline;cursor:pointer";
+      errTip.appendChild(a);
+    } else {
+      errTip.textContent = err.message;
+    }
+
+    document.body.appendChild(errTip);
+    const rect = range.getBoundingClientRect();
+    errTip.style.top  = rect.top  + window.scrollY - errTip.offsetHeight - CONFIG.TOOLTIP_GAP_PX + "px";
+    errTip.style.left = rect.left + window.scrollX + "px";
+    setTimeout(() => errTip.remove(), CONFIG.ERROR_DISPLAY_MS);
+  }
+
+  // ── Message listener ──────────────────────────────────────────────────────
+
+  // Debounce timer: if the user triggers multiple selections quickly, only the
+  // most recent one fires an LLM call.
+  let _debounceTimer = null;
+
+  browser.runtime.onMessage.addListener((msg) => {
     if (msg.action !== "translateJargon") return;
 
-    const selection = window.getSelection();
-    if (!selection || !selection.rangeCount || !selection.toString().trim()) return;
+    // Cancel any pending debounced call from a previous rapid selection.
+    if (_debounceTimer !== null) {
+      clearTimeout(_debounceTimer);
+      _debounceTimer = null;
+    }
 
-    const range = selection.getRangeAt(0);
-    const selectedText = selection.toString();
-    const context = getSurroundingContext(selection);
+    _debounceTimer = setTimeout(async () => {
+      _debounceTimer = null;
 
-    const { enableJargon, enableNotable } = await browser.storage.local.get({
-      enableJargon: true,
-      enableNotable: true
-    });
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount || !selection.toString().trim()) return;
 
-    if (!enableJargon && !enableNotable) return;
+      const range        = selection.getRangeAt(0);
+      const selectedText = selection.toString();
+      const context      = getSurroundingContext(selection);
 
-    clearHighlightsInRange(range);
+      const { enableJargon, enableNotable } = await browser.storage.local.get({
+        enableJargon: true,
+        enableNotable: true
+      });
 
-    const loader = showLoading(range);
-    try {
-      // Fire enabled LLM calls in parallel.
-      const promises = [];
-      if (enableJargon) {
-        promises.push(
-          callLLM(buildJargonPrompt(selectedText, context))
-            .then((terms) => ({ cssClass: JARGON_CLASS, terms }))
-        );
-      }
-      if (enableNotable) {
-        promises.push(
-          callLLM(buildNotablePrompt(selectedText, context))
-            .then((terms) => ({ cssClass: NOTABLE_CLASS, terms }))
-        );
-      }
+      if (!enableJargon && !enableNotable) return;
 
-      const results = await Promise.all(promises);
-      hideLoading(loader);
-
-      // Merge all valid terms with their assigned CSS class.
-      const allTerms = [];
-      for (const { cssClass, terms } of results) {
-        if (!Array.isArray(terms)) continue;
-        for (const t of terms) {
-          if (t && t.term && t.explanation) {
-            allTerms.push({ term: t.term, explanation: t.explanation, cssClass });
-          }
-        }
-      }
-
-      if (allTerms.length === 0) {
-        showBrief("No results found.", range);
+      // Pre-flight blocklist check: if every token is a common everyday term
+      // there is nothing for the LLM to do.
+      if (isFullyBlocklisted(selectedText)) {
+        showBrief("No jargon found.", range);
         return;
       }
 
-      // Re-grab the range — the selection may still be intact.
-      const freshRange =
-        selection.rangeCount > 0 ? selection.getRangeAt(0) : range;
+      clearHighlightsInRange(range);
+      const loader = showLoading(range);
 
-      highlightTerms(allTerms, freshRange);
-    } catch (err) {
-      hideLoading(loader);
-      console.error("[Jargon Translator]", err);
+      try {
+        let allTerms = [];
 
-      // Show a brief, non-intrusive error near the selection.
-      const errTip = document.createElement("span");
-      errTip.className = TOOLTIP_CLASS + " jt-error";
-      errTip.textContent = err.message;
-      document.body.appendChild(errTip);
-      const rect = range.getBoundingClientRect();
-      errTip.style.top = rect.top + window.scrollY - errTip.offsetHeight - 6 + "px";
-      errTip.style.left = rect.left + window.scrollX + "px";
-      setTimeout(() => errTip.remove(), 5000);
-    }
+        if (enableJargon && enableNotable) {
+          // ── Single combined call (faster + cheaper) ──
+          const cacheKey = "combined:" + hashText(selectedText);
+          let combined = termCache.get(cacheKey);
+          if (!combined) {
+            combined = await callLLM(buildCombinedPrompt(selectedText, context));
+            termCache.set(cacheKey, combined);
+          }
+          if (Array.isArray(combined.jargon)) {
+            for (const t of combined.jargon) {
+              if (t && t.term && t.explanation) {
+                allTerms.push({ term: t.term, explanation: t.explanation, cssClass: JARGON_CLASS });
+              }
+            }
+          }
+          if (Array.isArray(combined.notable)) {
+            for (const t of combined.notable) {
+              if (t && t.term && t.explanation) {
+                allTerms.push({ term: t.term, explanation: t.explanation, cssClass: NOTABLE_CLASS });
+              }
+            }
+          }
+        } else if (enableJargon) {
+          const cacheKey = "jargon:" + hashText(selectedText);
+          let terms = termCache.get(cacheKey);
+          if (!terms) {
+            terms = await callLLM(buildJargonPrompt(selectedText, context));
+            termCache.set(cacheKey, terms);
+          }
+          if (Array.isArray(terms)) {
+            for (const t of terms) {
+              if (t && t.term && t.explanation) {
+                allTerms.push({ term: t.term, explanation: t.explanation, cssClass: JARGON_CLASS });
+              }
+            }
+          }
+        } else {
+          const cacheKey = "notable:" + hashText(selectedText);
+          let terms = termCache.get(cacheKey);
+          if (!terms) {
+            terms = await callLLM(buildNotablePrompt(selectedText, context));
+            termCache.set(cacheKey, terms);
+          }
+          if (Array.isArray(terms)) {
+            for (const t of terms) {
+              if (t && t.term && t.explanation) {
+                allTerms.push({ term: t.term, explanation: t.explanation, cssClass: NOTABLE_CLASS });
+              }
+            }
+          }
+        }
+
+        // Post-filter: remove any terms the LLM returned that are in the blocklist.
+        allTerms = allTerms.filter((t) => !COMMON_TERMS_BLOCKLIST.has(t.term.toLowerCase()));
+
+        hideLoading(loader);
+
+        if (allTerms.length === 0) {
+          showBrief("No results found.", range);
+          return;
+        }
+
+        const freshRange = selection.rangeCount > 0 ? selection.getRangeAt(0) : range;
+        highlightTerms(allTerms, freshRange);
+      } catch (err) {
+        hideLoading(loader);
+        console.error("[Jargon Translator]", err);
+        showError(err, range);
+      }
+    }, CONFIG.DEBOUNCE_MS);
   });
 })();
