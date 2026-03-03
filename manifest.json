@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Jargon Translator",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Translate professional jargon and acronyms into plain language using AI.",
   "homepage_url": "https://github.com/Caevus/Jargon-Translator",
   "browser_specific_settings": {
