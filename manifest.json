@@ -36,8 +36,8 @@
   "commands": {
     "translate-selection": {
       "suggested_key": {
-        "default": "Ctrl+Shift+T",
-        "mac": "MacCtrl+Shift+T"
+        "default": "Ctrl+Alt+J",
+        "mac": "MacCtrl+Command+J"
       },
       "description": "Translate selected text with Jargon Translator"
     }
