@@ -1,3 +1,9 @@
+const CONFIG = {
+  DEFAULT_API_ENDPOINT: "https://openrouter.ai/api/v1/chat/completions",
+  DEFAULT_MODEL: "google/gemini-2.0-flash-001",
+  LLM_TEMPERATURE: 0.2
+};
+
 browser.contextMenus.create({
   id: "translate-jargon",
   title: "Translate Jargon",
@@ -13,6 +19,16 @@ browser.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
+// Keyboard shortcut — same action as the context menu.
+browser.commands.onCommand.addListener((command) => {
+  if (command !== "translate-selection") return;
+  browser.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs && tabs[0]) {
+      browser.tabs.sendMessage(tabs[0].id, { action: "translateJargon" });
+    }
+  });
+});
+
 // Handle messages from content scripts and extension pages.
 browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
@@ -22,35 +38,78 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       const { apiKey, apiEndpoint, modelName } = await browser.storage.local.get({
         apiKey: "",
-        apiEndpoint: "https://openrouter.ai/api/v1/chat/completions",
-        modelName: "google/gemini-2.0-flash-001"
+        apiEndpoint: CONFIG.DEFAULT_API_ENDPOINT,
+        modelName: CONFIG.DEFAULT_MODEL
       });
 
       if (!apiKey) {
         sendResponse({
-          error:
-            "No API key configured. Right-click the Jargon Translator icon \u2192 Preferences to set one."
+          error: {
+            type: "ERR_NO_API_KEY",
+            message: "No API key configured.",
+            optionsUrl: browser.runtime.getURL("options.html")
+          }
         });
         return;
       }
 
       try {
-        const res = await fetch(apiEndpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: modelName,
-            messages: [{ role: "user", content: msg.prompt }],
-            temperature: 0.2
-          })
-        });
+        let res;
+        try {
+          res = await fetch(apiEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: modelName,
+              messages: [{ role: "user", content: msg.prompt }],
+              temperature: CONFIG.LLM_TEMPERATURE
+            })
+          });
+        } catch (fetchErr) {
+          sendResponse({
+            error: {
+              type: "ERR_NETWORK",
+              message: "Could not reach the API endpoint. Check your internet connection."
+            }
+          });
+          return;
+        }
 
         if (!res.ok) {
-          const body = await res.text();
-          sendResponse({ error: `LLM request failed (${res.status}): ${body}` });
+          const body = await res.text().catch(() => "");
+          if (res.status === 401 || res.status === 403) {
+            sendResponse({
+              error: {
+                type: "ERR_UNAUTHORIZED",
+                message: "API key rejected (HTTP " + res.status + "). Check your key in Settings.",
+                optionsUrl: browser.runtime.getURL("options.html")
+              }
+            });
+          } else if (res.status === 429) {
+            sendResponse({
+              error: {
+                type: "ERR_RATE_LIMITED",
+                message: "Rate limit reached. Wait a moment and try again."
+              }
+            });
+          } else if (res.status >= 500) {
+            sendResponse({
+              error: {
+                type: "ERR_SERVER",
+                message: "The AI server returned an error (HTTP " + res.status + "). Try again shortly."
+              }
+            });
+          } else {
+            sendResponse({
+              error: {
+                type: "ERR_HTTP",
+                message: "LLM request failed (HTTP " + res.status + "): " + body
+              }
+            });
+          }
           return;
         }
 
@@ -62,14 +121,39 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           data.choices[0].message.content;
 
         if (!raw) {
-          sendResponse({ error: "Empty response from LLM." });
+          sendResponse({
+            error: {
+              type: "ERR_EMPTY",
+              message: "The model returned an empty response. Try a different model in Settings.",
+              optionsUrl: browser.runtime.getURL("options.html")
+            }
+          });
           return;
         }
 
-        const cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
-        sendResponse({ terms: JSON.parse(cleaned) });
+        let parsed;
+        try {
+          const cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
+          parsed = JSON.parse(cleaned);
+        } catch (parseErr) {
+          sendResponse({
+            error: {
+              type: "ERR_PARSE",
+              message: "The model returned invalid JSON. Try a different model in Settings.",
+              optionsUrl: browser.runtime.getURL("options.html")
+            }
+          });
+          return;
+        }
+
+        sendResponse({ result: parsed });
       } catch (err) {
-        sendResponse({ error: err.message });
+        sendResponse({
+          error: {
+            type: "ERR_NETWORK",
+            message: err.message
+          }
+        });
       }
     })();
     return true;

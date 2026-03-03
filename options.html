@@ -103,9 +103,17 @@
   <input type="url" id="apiEndpoint" placeholder="https://openrouter.ai/api/v1/chat/completions">
   <p class="hint">Any OpenAI-compatible endpoint works.</p>
 
-  <label for="modelName">Model</label>
-  <input type="text" id="modelName" placeholder="google/gemini-2.0-flash-001">
-  <p class="hint">Must support JSON output. Free-tier models work fine.</p>
+  <label for="modelPreset">Model</label>
+  <select id="modelPreset" style="width:100%;padding:6px 8px;margin-top:4px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box;background:#fff">
+    <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (Google, free)</option>
+    <option value="google/gemini-flash-1.5-8b">Gemini 1.5 Flash 8B (Google, free)</option>
+    <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B (Meta, free)</option>
+    <option value="mistralai/mistral-7b-instruct">Mistral 7B (Mistral, free)</option>
+    <option value="qwen/qwen-2.5-7b-instruct:free">Qwen 2.5 7B (Alibaba, free)</option>
+    <option value="custom">Custom model ID&hellip;</option>
+  </select>
+  <input type="text" id="modelName" placeholder="provider/model-name" style="display:none;margin-top:4px;width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:13px;box-sizing:border-box">
+  <p class="hint">Must support JSON output. Free-tier models on OpenRouter work fine.</p>
 
   <hr>
 
@@ -155,6 +163,7 @@
   </div>
   <div class="update-status" id="updateStatus"></div>
 
+  <script src="colorUtils.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

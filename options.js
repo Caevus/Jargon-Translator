@@ -1,4 +1,6 @@
 (function () {
+  const CONFIG = { STATUS_DISPLAY_MS: 2500 };
+
   const DEFAULTS = {
     apiKey: "",
     apiEndpoint: "https://openrouter.ai/api/v1/chat/completions",
@@ -9,51 +11,67 @@
     notableCustomHex: ""
   };
 
-  // ── Color picker helpers ──────────────────────────────────────────
+  // Model preset values that map to the <select> options in options.html.
+  const MODEL_PRESETS = [
+    "google/gemini-2.0-flash-001",
+    "google/gemini-flash-1.5-8b",
+    "meta-llama/llama-3.3-70b-instruct",
+    "mistralai/mistral-7b-instruct",
+    "qwen/qwen-2.5-7b-instruct:free"
+  ];
 
-  function initColorRow(rowId) {
-    const row = document.getElementById(rowId);
-    const hexInput = row.querySelector(".hex-input");
+  const modelPreset = document.getElementById("modelPreset");
+  const modelCustom = document.getElementById("modelName");
 
-    row.addEventListener("click", (e) => {
-      const swatch = e.target.closest(".color-swatch");
-      if (!swatch) return;
-      row.querySelectorAll(".color-swatch").forEach((s) => s.classList.remove("selected"));
-      swatch.classList.add("selected");
-      hexInput.classList.toggle("visible", swatch.dataset.color === "custom");
-    });
+  // Show/hide the custom model text input based on dropdown selection.
+  modelPreset.addEventListener("change", () => {
+    modelCustom.style.display = modelPreset.value === "custom" ? "" : "none";
+  });
 
-    return {
-      select(color) {
-        row.querySelectorAll(".color-swatch").forEach((s) =>
-          s.classList.toggle("selected", s.dataset.color === color)
-        );
-        hexInput.classList.toggle("visible", color === "custom");
-      },
-      selected() {
-        const s = row.querySelector(".color-swatch.selected");
-        return s ? s.dataset.color : "yellow";
-      }
-    };
+  /** Populate the model dropdown from a stored model name. */
+  function setModelDropdown(storedModel) {
+    if (MODEL_PRESETS.includes(storedModel)) {
+      modelPreset.value = storedModel;
+      modelCustom.style.display = "none";
+    } else {
+      modelPreset.value = "custom";
+      modelCustom.value = storedModel;
+      modelCustom.style.display = "";
+    }
   }
 
-  const jargonPicker = initColorRow("jargonColorRow");
-  const notablePicker = initColorRow("notableColorRow");
+  // ── Color pickers (shared logic lives in colorUtils.js / window.JT) ──────
 
-  // ── Load settings ─────────────────────────────────────────────────
+  const jargonPicker = JT.initColorPicker({
+    rowId:    "jargonColorRow",
+    dotSel:   ".color-swatch",
+    hexSel:   ".hex-input",
+    colorKey: "jargonColor",
+    hexKey:   "jargonCustomHex"
+  });
+
+  const notablePicker = JT.initColorPicker({
+    rowId:    "notableColorRow",
+    dotSel:   ".color-swatch",
+    hexSel:   ".hex-input",
+    colorKey: "notableColor",
+    hexKey:   "notableCustomHex"
+  });
+
+  // ── Load settings ─────────────────────────────────────────────────────────
 
   async function load() {
     const data = await browser.storage.local.get(DEFAULTS);
-    document.getElementById("apiKey").value = data.apiKey;
+    document.getElementById("apiKey").value      = data.apiKey;
     document.getElementById("apiEndpoint").value = data.apiEndpoint;
-    document.getElementById("modelName").value = data.modelName;
-    jargonPicker.select(data.jargonColor);
-    document.getElementById("jargonCustomHex").value = data.jargonCustomHex;
-    notablePicker.select(data.notableColor);
+    setModelDropdown(data.modelName);
+    jargonPicker.selectColor(data.jargonColor);
+    document.getElementById("jargonCustomHex").value  = data.jargonCustomHex;
+    notablePicker.selectColor(data.notableColor);
     document.getElementById("notableCustomHex").value = data.notableCustomHex;
   }
 
-  // ── Save settings ─────────────────────────────────────────────────
+  // ── Save settings ─────────────────────────────────────────────────────────
 
   function showStatus(text, isError) {
     const el = document.getElementById("status");
@@ -62,25 +80,28 @@
     setTimeout(() => {
       el.textContent = "";
       el.className = "status";
-    }, 2500);
+    }, CONFIG.STATUS_DISPLAY_MS);
   }
 
   document.getElementById("save").addEventListener("click", async () => {
+    const chosenModel =
+      modelPreset.value === "custom"
+        ? (modelCustom.value.trim() || DEFAULTS.modelName)
+        : modelPreset.value;
+
     await browser.storage.local.set({
-      apiKey: document.getElementById("apiKey").value.trim(),
-      apiEndpoint:
-        document.getElementById("apiEndpoint").value.trim() || DEFAULTS.apiEndpoint,
-      modelName:
-        document.getElementById("modelName").value.trim() || DEFAULTS.modelName,
-      jargonColor: jargonPicker.selected(),
-      jargonCustomHex: document.getElementById("jargonCustomHex").value.trim(),
-      notableColor: notablePicker.selected(),
+      apiKey:      document.getElementById("apiKey").value.trim(),
+      apiEndpoint: document.getElementById("apiEndpoint").value.trim() || DEFAULTS.apiEndpoint,
+      modelName:   chosenModel,
+      jargonColor:      jargonPicker.selectedColor(),
+      jargonCustomHex:  document.getElementById("jargonCustomHex").value.trim(),
+      notableColor:     notablePicker.selectedColor(),
       notableCustomHex: document.getElementById("notableCustomHex").value.trim()
     });
     showStatus("Saved.");
   });
 
-  // ── Export / Import ───────────────────────────────────────────────
+  // ── Export / Import ───────────────────────────────────────────────────────
 
   document.getElementById("exportBtn").addEventListener("click", async () => {
     const data = await browser.storage.local.get(null);
@@ -111,7 +132,7 @@
     e.target.value = "";
   });
 
-  // ── Update check ──────────────────────────────────────────────────
+  // ── Update check ──────────────────────────────────────────────────────────
 
   document.getElementById("checkUpdateBtn").addEventListener("click", async () => {
     const el = document.getElementById("updateStatus");
