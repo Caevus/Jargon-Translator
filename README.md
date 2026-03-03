@@ -39,7 +39,7 @@ The extension needs access to an OpenAI-compatible chat-completions endpoint.
 | Field | Default | Notes |
 |-------|---------|-------|
 | **API Key** | *(none)* | Required. An OpenRouter API key (`sk-or-…`) works out of the box. |
-| **API Endpoint** | `https://openrouter.ai/api/v1/chat/completions` | Any OpenAI-compatible endpoint. |
+| **API Endpoint** | `https://openrouter.ai/api/v1/chat/completions` | Any OpenAI-schema compatible endpoint. |
 | **Model** | `google/gemini-2.0-flash-001` | Free on OpenRouter. Any model that can return JSON works. |
 
 4. Click **Save**.
