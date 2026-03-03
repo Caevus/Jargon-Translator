@@ -67,4 +67,14 @@
   }
 
   load();
+
+  // ── Keyboard shortcut customize link ──────────────────────────────────────
+  // Firefox blocks navigation to about: URLs from extension page <a> tags, so
+  // we open the addons page programmatically instead.
+
+  document.getElementById("customizeShortcut").addEventListener("click", (e) => {
+    e.preventDefault();
+    browser.tabs.create({ url: "about:addons" });
+    window.close();
+  });
 })();

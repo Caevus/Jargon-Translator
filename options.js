@@ -165,4 +165,11 @@
   });
 
   load();
+
+  // ── Keyboard shortcut customize link ──────────────────────────────────────
+
+  document.getElementById("customizeShortcut").addEventListener("click", (e) => {
+    e.preventDefault();
+    browser.tabs.create({ url: "about:addons" });
+  });
 })();
