@@ -6,6 +6,71 @@
   const TOOLTIP_CLASS = "jt-tooltip";
   const LOADING_CLASS = "jt-loading";
 
+  // ── Color customisation ────────────────────────────────────────────
+
+  const COLOR_PRESETS = {
+    yellow: { bg: "rgba(255, 210, 50, 0.30)", border: "rgba(180, 140, 0, 0.55)" },
+    blue:   { bg: "rgba(100, 160, 255, 0.25)", border: "rgba(40, 90, 200, 0.55)" },
+    green:  { bg: "rgba(100, 200, 120, 0.25)", border: "rgba(30, 130, 50, 0.55)" },
+    pink:   { bg: "rgba(255, 140, 170, 0.25)", border: "rgba(200, 60, 100, 0.55)" },
+    purple: { bg: "rgba(180, 130, 255, 0.25)", border: "rgba(100, 50, 200, 0.55)" }
+  };
+
+  function hexToColors(hex) {
+    hex = hex.replace(/^#/, "");
+    if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    return {
+      bg: `rgba(${r}, ${g}, ${b}, 0.25)`,
+      border: `rgba(${Math.round(r * 0.6)}, ${Math.round(g * 0.6)}, ${Math.round(b * 0.6)}, 0.55)`
+    };
+  }
+
+  function resolveColor(name, customHex) {
+    if (name === "custom" && /^#[0-9a-f]{3,6}$/i.test(customHex)) {
+      return hexToColors(customHex);
+    }
+    return COLOR_PRESETS[name] || COLOR_PRESETS.yellow;
+  }
+
+  /** Inject (or update) a <style> element that overrides highlight colours. */
+  function applyHighlightColors() {
+    browser.storage.local
+      .get({
+        jargonColor: "yellow",
+        jargonCustomHex: "",
+        notableColor: "blue",
+        notableCustomHex: ""
+      })
+      .then((data) => {
+        const j = resolveColor(data.jargonColor, data.jargonCustomHex);
+        const n = resolveColor(data.notableColor, data.notableCustomHex);
+        let el = document.getElementById("jt-color-overrides");
+        if (!el) {
+          el = document.createElement("style");
+          el.id = "jt-color-overrides";
+          (document.head || document.documentElement).appendChild(el);
+        }
+        el.textContent =
+          `.jt-highlight{background:${j.bg}!important;border-bottom-color:${j.border}!important}` +
+          `.jt-notable{background:${n.bg}!important;border-bottom-color:${n.border}!important}`;
+      });
+  }
+
+  applyHighlightColors();
+  browser.storage.onChanged.addListener((changes) => {
+    if (
+      changes.jargonColor ||
+      changes.jargonCustomHex ||
+      changes.notableColor ||
+      changes.notableCustomHex
+    ) {
+      applyHighlightColors();
+    }
+  });
+
   // ── Helpers ──────────────────────────────────────────────────────────
 
   /** Grab surrounding text for extra context (up to ~800 chars each side). */
@@ -38,12 +103,13 @@
       selectedText,
       "",
       "TASK:",
-      "1. Identify every piece of jargon, technical term, acronym/initialism, or domain-specific language in the SELECTED TEXT.",
-      "   Be thorough — when in doubt, INCLUDE the term. It is far better to flag a borderline term than to miss one.",
+      "1. Identify jargon, technical terms, acronyms/initialisms, and domain-specific language in the SELECTED TEXT.",
+      "   Lean towards inclusion — it is better to flag a borderline term than to miss genuine jargon.",
       "2. For each term, provide a SHORT explanation (one sentence max) a non-expert would understand.",
       "   For acronyms, start with the expanded form, then explain if needed.",
       "3. Use the surrounding context to pick the most likely meaning when a term is ambiguous.",
-      "4. Only skip a term if it is common everyday language that any non-technical adult would already know.",
+      "4. Skip terms that are common everyday language (e.g. TV, email, GPS) or that the surrounding context already clearly defines.",
+      "5. IGNORE hashtags (e.g. #science, #breaking) — never flag them.",
       "",
       "Return ONLY a JSON array. Each element must have exactly two keys:",
       '  "term"  – the exact string as it appears in the selected text (preserve original case),',
@@ -68,11 +134,12 @@
       selectedText,
       "",
       "TASK:",
-      "1. Identify every named person, organization, company, agency, institution, or other named entity in the SELECTED TEXT that a reader might want context on.",
-      "   Be thorough — include anyone or anything notable or relevant to the subject matter.",
+      "1. Identify named people, organizations, companies, agencies, and institutions in the SELECTED TEXT, but ONLY those with broader public notability.",
+      "   The entity must be someone or something a reader could look up — with an established public presence, Wikipedia article, or well-known reputation.",
       "2. For each entity, provide a SHORT explanation (one sentence max) of who or what they are and why they are relevant here.",
       "3. Use the surrounding context to determine the most relevant description.",
-      "4. Do NOT include generic common nouns or everyday words that happen to be capitalized at the start of a sentence.",
+      "4. For first names alone (e.g. \"Carl\"), only include if the surrounding context makes it unambiguously clear which specific notable person is meant.",
+      "5. Do NOT include generic common nouns, everyday words that happen to be capitalized, hashtags, or private individuals without public notability.",
       "",
       "Return ONLY a JSON array. Each element must have exactly two keys:",
       '  "term"  – the exact name as it appears in the selected text (preserve original case),',

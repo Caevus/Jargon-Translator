@@ -12,7 +12,9 @@
     }
     h2 { margin: 0 0 12px; font-size: 16px; }
     label { display: block; margin-top: 12px; font-weight: 600; }
-    input, select {
+    input[type="text"],
+    input[type="password"],
+    input[type="url"] {
       width: 100%;
       padding: 6px 8px;
       margin-top: 4px;
@@ -27,21 +29,67 @@
       margin-top: 2px;
     }
     button {
-      margin-top: 16px;
       padding: 8px 16px;
       background: #0060df;
       color: #fff;
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 13px;
     }
     button:hover { background: #003eaa; }
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #1a1a1a;
+      border: 1px solid #ccc;
+    }
+    .btn-secondary:hover { background: #e0e0e0; }
     .status {
       margin-top: 8px;
       font-size: 13px;
       color: #058b00;
     }
+    .status.error { color: #c00; }
+    hr { border: none; border-top: 1px solid #eee; margin: 16px 0; }
+
+    /* Color swatches */
+    .color-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      align-items: center;
+    }
+    .color-swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2.5px solid transparent;
+      cursor: pointer;
+      padding: 0;
+      box-sizing: border-box;
+      flex-shrink: 0;
+    }
+    .color-swatch.selected { border-color: #0060df; }
+    .color-swatch:hover { border-color: #999; }
+    .color-swatch[data-color="custom"] {
+      background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red) !important;
+    }
+    .hex-input {
+      width: 80px;
+      padding: 3px 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font: 12px/1.4 monospace;
+      display: none;
+    }
+    .hex-input.visible { display: inline-block; }
+
+    .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+    .update-status {
+      margin-top: 8px;
+      font-size: 13px;
+    }
+    .update-status a { color: #0060df; }
   </style>
 </head>
 <body>
@@ -59,8 +107,53 @@
   <input type="text" id="modelName" placeholder="google/gemini-2.0-flash-001">
   <p class="hint">Must support JSON output. Free-tier models work fine.</p>
 
-  <button id="save">Save</button>
+  <hr>
+
+  <label>Jargon highlight color</label>
+  <div class="color-row" id="jargonColorRow">
+    <span class="color-swatch selected" data-color="yellow" style="background:rgba(255,210,50,0.55)" title="Yellow"></span>
+    <span class="color-swatch" data-color="blue" style="background:rgba(100,160,255,0.5)" title="Blue"></span>
+    <span class="color-swatch" data-color="green" style="background:rgba(100,200,120,0.5)" title="Green"></span>
+    <span class="color-swatch" data-color="pink" style="background:rgba(255,140,170,0.5)" title="Pink"></span>
+    <span class="color-swatch" data-color="purple" style="background:rgba(180,130,255,0.5)" title="Purple"></span>
+    <span class="color-swatch" data-color="custom" title="Custom"></span>
+    <input type="text" class="hex-input" id="jargonCustomHex" placeholder="#d4a017" maxlength="7">
+  </div>
+
+  <label>Notable highlight color</label>
+  <div class="color-row" id="notableColorRow">
+    <span class="color-swatch" data-color="yellow" style="background:rgba(255,210,50,0.55)" title="Yellow"></span>
+    <span class="color-swatch selected" data-color="blue" style="background:rgba(100,160,255,0.5)" title="Blue"></span>
+    <span class="color-swatch" data-color="green" style="background:rgba(100,200,120,0.5)" title="Green"></span>
+    <span class="color-swatch" data-color="pink" style="background:rgba(255,140,170,0.5)" title="Pink"></span>
+    <span class="color-swatch" data-color="purple" style="background:rgba(180,130,255,0.5)" title="Purple"></span>
+    <span class="color-swatch" data-color="custom" title="Custom"></span>
+    <input type="text" class="hex-input" id="notableCustomHex" placeholder="#4a90d9" maxlength="7">
+  </div>
+
+  <div style="margin-top:16px">
+    <button id="save">Save</button>
+  </div>
   <div class="status" id="status"></div>
+
+  <hr>
+
+  <label>Settings backup</label>
+  <p class="hint">Export your settings (including API key) to a file, so they survive a full extension reinstall.</p>
+  <div class="btn-row">
+    <button class="btn-secondary" id="exportBtn">Export</button>
+    <button class="btn-secondary" id="importBtn">Import</button>
+  </div>
+  <input type="file" id="importFile" accept=".json" style="display:none">
+
+  <hr>
+
+  <label>Updates</label>
+  <p class="hint">Checks the GitHub repository for a newer version.</p>
+  <div class="btn-row">
+    <button class="btn-secondary" id="checkUpdateBtn">Check for updates</button>
+  </div>
+  <div class="update-status" id="updateStatus"></div>
 
   <script src="options.js"></script>
 </body>
