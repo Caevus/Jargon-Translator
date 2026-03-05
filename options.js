@@ -152,9 +152,9 @@
           )
         );
         const a = document.createElement("a");
-        a.href = resp.repoUrl + "/archive/refs/heads/main.zip";
+        a.href = resp.repoUrl + "/releases/latest";
         a.target = "_blank";
-        a.textContent = "Download ZIP";
+        a.textContent = "View on GitHub";
         el.appendChild(a);
       } else {
         el.textContent = `Up to date (v${resp.localVersion}).`;
