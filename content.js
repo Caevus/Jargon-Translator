@@ -65,7 +65,41 @@
     // Geographic terms — extra safety net against notable-entity false positives
     "arctic", "antarctic", "atlantic", "pacific", "europe", "asia", "africa",
     "america", "australia", "north", "south", "east", "west", "northern",
-    "southern", "eastern", "western", "global", "worldwide", "international"
+    "southern", "eastern", "western", "global", "worldwide", "international",
+    // Countries
+    "afghanistan", "albania", "algeria", "andorra", "angola", "argentina",
+    "armenia", "australia", "austria", "azerbaijan", "bahamas", "bahrain",
+    "bangladesh", "barbados", "belarus", "belgium", "belize", "benin",
+    "bhutan", "bolivia", "bosnia", "botswana", "brazil", "brunei", "bulgaria",
+    "burkina faso", "burundi", "cambodia", "cameroon", "canada", "chad",
+    "chile", "china", "colombia", "comoros", "congo", "croatia", "cuba",
+    "cyprus", "czechia", "denmark", "djibouti", "dominica", "ecuador",
+    "egypt", "eritrea", "estonia", "eswatini", "ethiopia", "fiji", "finland",
+    "france", "gabon", "gambia", "georgia", "germany", "ghana", "greece",
+    "grenada", "guatemala", "guinea", "guyana", "haiti", "honduras",
+    "hungary", "iceland", "india", "indonesia", "iran", "iraq", "ireland",
+    "israel", "italy", "jamaica", "japan", "jordan", "kazakhstan", "kenya",
+    "kiribati", "kosovo", "kuwait", "kyrgyzstan", "laos", "latvia",
+    "lebanon", "lesotho", "liberia", "libya", "liechtenstein", "lithuania",
+    "luxembourg", "madagascar", "malawi", "malaysia", "maldives", "mali",
+    "malta", "mauritania", "mauritius", "mexico", "micronesia", "moldova",
+    "monaco", "mongolia", "montenegro", "morocco", "mozambique", "myanmar",
+    "namibia", "nauru", "nepal", "netherlands", "nicaragua", "niger",
+    "nigeria", "norway", "oman", "pakistan", "palau", "panama", "paraguay",
+    "peru", "philippines", "poland", "portugal", "qatar", "romania",
+    "russia", "rwanda", "samoa", "senegal", "serbia", "seychelles",
+    "singapore", "slovakia", "slovenia", "somalia", "spain", "sudan",
+    "suriname", "sweden", "switzerland", "syria", "taiwan", "tajikistan",
+    "tanzania", "thailand", "togo", "tonga", "tunisia", "turkey",
+    "turkmenistan", "tuvalu", "uganda", "ukraine", "uruguay", "uzbekistan",
+    "vanuatu", "venezuela", "vietnam", "yemen", "zambia", "zimbabwe",
+    "united states", "united kingdom", "united arab emirates",
+    "saudi arabia", "south africa", "south korea", "north korea",
+    "new zealand", "costa rica", "el salvador", "czech republic",
+    "dominican republic", "trinidad", "tobago", "trinidad and tobago",
+    "papua new guinea", "central african republic", "equatorial guinea",
+    "sierra leone", "burkina", "cabo verde", "cape verde", "ivory coast",
+    "timor-leste", "east timor", "são tomé", "solomon islands"
   ]);
 
   /**
