@@ -65,7 +65,51 @@
     // Geographic terms — extra safety net against notable-entity false positives
     "arctic", "antarctic", "atlantic", "pacific", "europe", "asia", "africa",
     "america", "australia", "north", "south", "east", "west", "northern",
-    "southern", "eastern", "western", "global", "worldwide", "international"
+    "southern", "eastern", "western", "global", "worldwide", "international",
+    // US states (single-word)
+    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+    "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine",
+    "maryland", "massachusetts", "michigan", "minnesota", "mississippi",
+    "missouri", "montana", "nebraska", "nevada", "ohio", "oklahoma", "oregon",
+    "pennsylvania", "tennessee", "texas", "utah", "vermont", "virginia",
+    "washington", "wisconsin", "wyoming",
+    // US states (multi-word) — caught by the post-filter on full term strings
+    "new hampshire", "new jersey", "new mexico", "new york", "north carolina",
+    "north dakota", "rhode island", "south carolina", "south dakota",
+    "west virginia",
+    // Countries (single-word)
+    "afghanistan", "albania", "algeria", "andorra", "angola", "argentina",
+    "armenia", "austria", "azerbaijan", "bahrain", "bangladesh", "belarus",
+    "belgium", "belize", "benin", "bolivia", "botswana", "brazil", "brunei",
+    "bulgaria", "burundi", "cambodia", "cameroon", "canada", "chad", "chile",
+    "china", "colombia", "croatia", "cuba", "cyprus", "czechia", "denmark",
+    "djibouti", "ecuador", "egypt", "eritrea", "estonia", "ethiopia", "fiji",
+    "finland", "france", "gabon", "gambia", "germany", "ghana", "greece",
+    "grenada", "guatemala", "guinea", "guyana", "haiti", "honduras", "hungary",
+    "iceland", "india", "indonesia", "iran", "iraq", "ireland", "israel",
+    "italy", "jamaica", "japan", "jordan", "kazakhstan", "kenya", "kuwait",
+    "kyrgyzstan", "laos", "latvia", "lebanon", "lesotho", "liberia", "libya",
+    "liechtenstein", "lithuania", "luxembourg", "madagascar", "malawi",
+    "malaysia", "maldives", "mali", "malta", "mauritania", "mauritius",
+    "mexico", "moldova", "monaco", "mongolia", "montenegro", "morocco",
+    "mozambique", "myanmar", "namibia", "nepal", "netherlands", "nicaragua",
+    "niger", "nigeria", "norway", "oman", "pakistan", "palau", "panama",
+    "paraguay", "peru", "philippines", "poland", "portugal", "qatar",
+    "romania", "russia", "rwanda", "samoa", "senegal", "serbia", "seychelles",
+    "singapore", "slovakia", "slovenia", "somalia", "spain", "sudan",
+    "suriname", "sweden", "switzerland", "syria", "taiwan", "tajikistan",
+    "tanzania", "thailand", "togo", "tonga", "tunisia", "turkey",
+    "turkmenistan", "tuvalu", "uganda", "ukraine", "uruguay", "uzbekistan",
+    "vanuatu", "venezuela", "vietnam", "yemen", "zambia", "zimbabwe",
+    // Countries (multi-word) — caught by the post-filter on full term strings
+    "new zealand", "north korea", "south korea", "saudi arabia", "south africa",
+    "united states", "united kingdom", "costa rica", "el salvador", "sri lanka",
+    "san marino", "cape verde", "ivory coast", "burkina faso", "sierra leone",
+    "equatorial guinea", "papua new guinea", "central african republic",
+    "democratic republic of congo", "czech republic", "dominican republic",
+    "united arab emirates", "trinidad and tobago", "antigua and barbuda",
+    "saint kitts and nevis", "saint lucia", "saint vincent"
   ]);
 
   /**
