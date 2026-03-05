@@ -152,7 +152,7 @@
           )
         );
         const a = document.createElement("a");
-        a.href = resp.repoUrl + "/releases/latest";
+        a.href = resp.repoUrl + "/tree/main";
         a.target = "_blank";
         a.textContent = "View on GitHub";
         el.appendChild(a);
