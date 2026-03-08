@@ -1,4 +1,4 @@
-# Privacy Policy — Jargon Translator
+# Privacy Policy
 
 **Last updated:** March 8, 2026
 
